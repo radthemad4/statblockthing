@@ -1,6 +1,8 @@
 # This is a clone of https://github.com/basarat/react-typescript.git
 > Provide a simple setup steps that can fit in one page.
 
+# It's hosted here https://radthemad4.github.io/statblockthing/
+
 # How to use 
 
 ```
