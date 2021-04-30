@@ -10,4 +10,12 @@ git clone https://github.com/radthemad4/statblockthing
 npm i
 npm start
 ```
+
 Visit http://localhost:8080
+
+# To publish
+
+```
+npm run-script build
+```
+and check the public folder for HTML and JavaScript files
