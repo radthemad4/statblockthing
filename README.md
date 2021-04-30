@@ -1,12 +1,10 @@
-# Objective
+# This is a clone of https://github.com/basarat/react-typescript.git
 > Provide a simple setup steps that can fit in one page.
-
-This is a sample project from the TypeScript book : [*TypeScript Deep Dive*](https://basarat.gitbook.io/typescript/content/docs/quick/browser.html).
 
 # How to use 
 
 ```
-git clone https://github.com/basarat/react-typescript.git
+git clone https://github.com/radthemad4/statblockthing
 npm i
 npm start
 ```
