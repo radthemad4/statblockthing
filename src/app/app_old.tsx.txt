@@ -1,0 +1,1025 @@
+import React from 'react';
+import ReactDOM from 'react-dom';
+import { numberPicker, statblockLeft } from './styles';
+import { evaluate } from 'mathjs';
+import { Modal } from './modal';
+import { BABProgression, HPFromHDCalculation, SaveProgression, Size, sizeName } from './progressions';
+import { addBonuses, BonusType, bonusTypes, Bonus } from './bonus';
+
+
+interface AppState {
+  size: number,
+  otherSize: boolean,
+
+  hpFromHDCalculation: HPFromHDCalculation,
+  additionalHpSources: Bonus[],
+  initiativeSources: Bonus[],
+  speeds: [string, Bonus[]][],
+
+  abilityScores: {
+    str: number | string,
+    dex: number | string,
+    con: number | string,
+    int: number | string,
+    wis: number | string,
+    cha: number | string,
+    bonusType: BonusType | string
+  }[],
+
+  levelProgression: {
+    levels: number,
+    hd: number,
+    bab: BABProgression,
+    fort: SaveProgression,
+    ref: SaveProgression,
+    will: SaveProgression
+  }[],
+
+  showSizeModal: boolean,
+  showHitDiceModal: boolean,
+  showAbilitiesModal: boolean,
+  showInitiativeModal: boolean,
+  showSpeedModal: boolean,
+}
+
+class App extends React.Component<{}, AppState> {
+  constructor(props: {}) {
+    super(props);
+    this.state = {
+      size: Size.Medium,
+      otherSize: false,
+
+      hpFromHDCalculation: HPFromHDCalculation.Average,
+      additionalHpSources: [
+        ['conMod * level', BonusType.untyped],
+      ],
+      initiativeSources: [
+        ['dexMod', BonusType.untyped],
+      ],
+      speeds: [
+        ['land', [[30, BonusType.untyped]]],
+      ],
+
+      abilityScores: [
+        {
+          str: 8,
+          dex: 8,
+          con: 8,
+          int: 8,
+          wis: 8,
+          cha: 8,
+          bonusType: BonusType.baseAbilityScore
+        },
+        {
+          str: 0,
+          dex: 0,
+          con: 0,
+          int: 0,
+          wis: 0,
+          cha: 0,
+          bonusType: BonusType.racial
+        },
+        {
+          str: 0,
+          dex: 0,
+          con: 0,
+          int: 0,
+          wis: 0,
+          cha: 0,
+          bonusType: BonusType.enhancement
+        },
+      ],
+
+      levelProgression: [
+        {
+          levels: 1,
+          hd: 4,
+          bab: BABProgression.Poor,
+          fort: SaveProgression.Poor,
+          ref: SaveProgression.Poor,
+          will: SaveProgression.Poor
+        },
+      ],
+
+      showSizeModal: false,
+      showHitDiceModal: false,
+      showAbilitiesModal: false,
+      showInitiativeModal: false,
+      showSpeedModal: false,
+    };
+
+    for (let abilityScoreName of ['str', 'dex', 'con', 'int', 'wis', 'cha']) {
+      this[`_${abilityScoreName}Score`] = () => {
+        return addBonuses(this.state.abilityScores.reduce((prev, element) => {
+          let output: number;
+          if (typeof element[abilityScoreName] === 'number') {
+            output = element[abilityScoreName];
+          } else {
+            try {
+              let scope = {
+                level: this.level()
+              }
+              output = evaluate(element[abilityScoreName], scope);
+            } catch (error) {
+              output = null;
+            }
+          }
+
+          if (prev.has(element.bonusType)) {
+            prev.get(element.bonusType).push(output);
+          } else {
+            prev.set(element.bonusType, [output]);
+          }
+
+          return prev;
+        }, new Map<string, number[]>()));
+      }
+
+      this[`_${abilityScoreName}Mod`] = () => {
+        let score = this[`_${abilityScoreName}Score`]();
+        if (score == null) {
+          return 0;
+        }
+        return Math.floor(0.5 * (score - 10));
+      }
+    }
+  }
+
+  strScore(): number { return this['_strScore'](); }
+  dexScore(): number { return this['_dexScore'](); }
+  conScore(): number { return this['_conScore'](); }
+  intScore(): number { return this['_intScore'](); }
+  wisScore(): number { return this['_wisScore'](); }
+  chaScore(): number { return this['_chaScore'](); }
+
+  strMod(): number { return this['_strMod'](); }
+  dexMod(): number { return this['_dexMod'](); }
+  conMod(): number { return this['_conMod'](); }
+  intMod(): number { return this['_intMod'](); }
+  wisMod(): number { return this['_wisMod'](); }
+  chaMod(): number { return this['_chaMod'](); }
+
+  hpFromHD(): number {
+    if (this.state.hpFromHDCalculation == HPFromHDCalculation.Max) {
+      return Math.floor(this.state.levelProgression.reduce((previousValue, { hd, levels }) => {
+        return previousValue + hd * levels;
+      }, 0));
+    }
+
+    return Math.floor(this.state.levelProgression.reduce((previousValue, { hd, levels }) => {
+      return previousValue + (hd + 1) * levels * 0.5;
+    }, 0) + (this.state.hpFromHDCalculation == HPFromHDCalculation.MaxFirst ? (this.state.levelProgression[0].hd) - (this.state.levelProgression[0].hd + 1) * 0.5 : 0));
+  }
+
+  totalHP(): number {
+    return this.additionalHP() + this.hpFromHD();
+  }
+
+  totalInitiative(): number {
+    return addBonuses(this.state.initiativeSources, this.abilityScoresAndModsScope());
+  }
+
+  abilityScoresAndModsScope() {
+    return {
+
+      strScore: this.strScore(),
+      dexScore: this.dexScore(),
+      conScore: this.conScore(),
+      intScore: this.intScore(),
+      wisScore: this.wisScore(),
+      chaScore: this.chaScore(),
+
+      strMod: this.strMod(),
+      dexMod: this.dexMod(),
+      conMod: this.conMod(),
+      intMod: this.intMod(),
+      wisMod: this.wisMod(),
+      chaMod: this.chaMod(),
+
+      level: this.level()
+    }
+  }
+
+  additionalHP(): number {
+    return addBonuses(this.state.additionalHpSources, this.abilityScoresAndModsScope());
+  }
+
+  level(): number {
+    return this.state.levelProgression.reduce((prev, { levels }) => {
+      return prev + levels;
+    }, 0);
+  }
+
+  render() {
+
+    let hitDiceArray: number[] = [];
+    let hitDiceMap = new Map<number, number>();
+
+    for (let { hd, levels } of this.state.levelProgression) {
+      if (hitDiceMap.has(hd)) {
+        hitDiceMap.set(hd, hitDiceMap.get(hd) + levels);
+      } else {
+        hitDiceMap.set(hd, levels);
+        hitDiceArray.push(hd);
+      }
+    }
+
+    let additionalHPString = '';
+    (() => {
+      let additionalHP = this.additionalHP();
+
+      if (additionalHP > 0) {
+        additionalHPString = ` + ${additionalHP}`;
+      } else if (additionalHP < 0) {
+        additionalHPString = ` - ${Math.abs(additionalHP)}`;
+      }
+    })();
+
+
+    let hitDiceString = hitDiceArray.map((hd) => {
+      return `${hitDiceMap.get(hd)}d${hd}`
+    }).join(' + ') + additionalHPString + ` (${this.totalHP()} hp)`;
+
+    let sizeString = sizeName(this.state.size);
+
+    return <div>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'max-content max-content',
+        gap: '0 10px'
+      }}>
+        <div className={statblockLeft}>Size/Type:</div><div onClick={() => {
+          this.setState({ showSizeModal: true });
+        }}>{sizeString}</div>
+
+        <div className={statblockLeft}>Hit Dice:</div><div onClick={() => {
+          this.setState({ showHitDiceModal: true });
+        }}>{hitDiceString}</div>
+
+        <div className={statblockLeft}>Initiative:</div><div onClick={() => {
+          this.setState({ showInitiativeModal: true });
+        }}>{(() => {
+          let initiative = this.totalInitiative();
+          return initiative > 0 ? `+${initiative}` : initiative;
+        })()}</div>
+        <div className={statblockLeft}>Speed:</div><div onClick={() => {
+          this.setState({ showSpeedModal: true });
+        }}>{(() => {
+          let speedStrings: string[] = [];
+          for (let [speedType, bonuses] of this.state.speeds) {
+            let numberOfFeet = addBonuses(bonuses, this.abilityScoresAndModsScope());
+            switch (speedType.toLowerCase()) {
+              case "land":
+                speedStrings.push(`${numberOfFeet} ft.`);
+                break;
+              default:
+                if (speedType.includes("fly")) {
+                  speedStrings.push(`fly ${numberOfFeet} ft.`);
+                } else {
+                  speedStrings.push(`${speedType} ${numberOfFeet} ft.`);
+                }
+                break;
+            }
+            if (speedStrings.length === 1) {
+              speedStrings[0] = speedStrings[0].charAt(0).toUpperCase() + speedStrings[0].slice(1);
+              speedStrings[0] = `${speedStrings[0]} (${Math.floor(numberOfFeet / 5)} squares)`;
+            }
+          }
+          return speedStrings.join(", ");
+        })()}</div>
+        <div className={statblockLeft}>Armor Class:</div><div>To do</div>
+        <div className={statblockLeft}>Base Attack/Grapple:</div><div>To do</div>
+        <div className={statblockLeft}>Attack:</div><div>To do</div>
+        <div className={statblockLeft}>Full Attack:</div><div>To do</div>
+        <div className={statblockLeft}>Space/Reach:</div><div>To do</div>
+        <div className={statblockLeft}>Special Attacks:</div><div>To do</div>
+        <div className={statblockLeft}>Special Qualities:</div><div>To do</div>
+        <div className={statblockLeft}>Saves:</div><div>To do</div>
+
+        <div className={statblockLeft}>Abilities:</div><div onClick={() => {
+          this.setState({ showAbilitiesModal: true });
+        }}>Str {this.strScore() ?? '—'}, Dex {this.dexScore() ?? '—'}, Con {this.conScore() ?? '—'}, Int {this.intScore() ?? '—'}, Wis {this.wisScore() ?? '—'}, Cha {this.chaScore() ?? '—'}</div>
+
+        <div className={statblockLeft}>Skills:</div><div>To do</div>
+        <div className={statblockLeft}>Feats:</div><div>To do</div>
+        <div style={{ backgroundColor: 'black', height: '1px', gridColumn: '1 / span 2', marginTop: '5px', marginBottom: '2.5px' }}></div>
+        <div className={statblockLeft}>Environment:</div><div>To do</div>
+        <div className={statblockLeft}>Organization:</div><div>To do</div>
+        <div className={statblockLeft}>Challenge Rating:</div><div>To do</div>
+        <div className={statblockLeft}>Treasure:</div><div>To do</div>
+        <div className={statblockLeft}>Alignment:</div><div>To do</div>
+        <div className={statblockLeft}>Advancement:</div><div>To do</div>
+        <div className={statblockLeft}>Level Adjustment:</div><div>To do</div>
+
+        <Modal
+          show={this.state.showSizeModal}
+          interior={
+            <div>
+              <div>
+                <select
+                  value={!this.state.otherSize ? sizeString : "Other"}
+                  tabIndex={Math.abs(this.state.size) <= 4 ? this.state.size + 4 : 9}
+                  onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                    event.persist();
+                    if (event.target.selectedIndex <= 8) {
+                      this.setState({
+                        size: event.target.selectedIndex - 4,
+                        otherSize: false
+                      });
+                    } else {
+                      this.setState({
+                        size: 5,
+                        otherSize: true
+                      });
+                    }
+                  }}>
+                  <option value="Fine">Fine</option>
+                  <option value="Diminutive">Diminutive</option>
+                  <option value="Tiny">Tiny</option>
+                  <option value="Small">Small</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Large">Large</option>
+                  <option value="Huge">Huge</option>
+                  <option value="Gargantuan">Gargantuan</option>
+                  <option value="Colossal">Colossal</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                {this.state.otherSize ? <div><br /><input type='number' value={this.state.size} onChange={(event) => {
+                  let sizeInt = parseInt(event.target.value);
+                  if (!isNaN(sizeInt)) {
+                    this.setState({ size: sizeInt });
+                  }
+                }}></input></div> : ''}
+              </div>
+            </div>}
+          onDismiss={() => {
+            this.setState({ showSizeModal: false, otherSize: Math.abs(this.state.size) > 4 });
+          }}
+        ></Modal>
+
+        <Modal
+          show={this.state.showHitDiceModal}
+          onDismiss={() => {
+            this.setState({ showHitDiceModal: false });
+          }}
+          interior={<div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 3em) repeat(4, 4.5em) 1em',
+              gridGap: '5px 10px',
+              gridRow: `repeat(${this.state.levelProgression.length}, 10px)`
+            }}>
+              {['Levels', 'HD', 'BAB', 'Fort', 'Ref', 'Will', ''].map((item) => <span key={item}>{item}</span>)}
+
+              {this.state.levelProgression.map(({ levels, hd, bab, fort, ref, will }, index) => <React.Fragment key={index}>
+
+                <input type='number' min='1' className={numberPicker} value={levels} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ levels: parseInt(event.target.value) } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}></input>
+
+                <input type='number' className={numberPicker} value={hd} onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ hd: parseInt(event.target.value) } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}></input>
+
+                <select value={bab} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ bab: event.target.value as BABProgression } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}>
+                  <option value={BABProgression.None}>{BABProgression.None}</option>
+                  <option value={BABProgression.Poor}>{BABProgression.Poor}</option>
+                  <option value={BABProgression.Average}>{BABProgression.Average}</option>
+                  <option value={BABProgression.Good}>{BABProgression.Good}</option>
+                </select>
+
+                <select value={fort} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ fort: event.target.value as SaveProgression } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}>
+                  <option value={SaveProgression.None}>{SaveProgression.None}</option>
+                  <option value={SaveProgression.Poor}>{SaveProgression.Poor}</option>
+                  <option value={SaveProgression.Good}>{SaveProgression.Good}</option>
+                </select>
+
+                <select value={ref} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ ref: event.target.value as SaveProgression } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}>
+                  <option value={SaveProgression.None}>{SaveProgression.None}</option>
+                  <option value={SaveProgression.Poor}>{SaveProgression.Poor}</option>
+                  <option value={SaveProgression.Good}>{SaveProgression.Good}</option>
+                </select>
+
+                <select value={will} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => {
+                  event.persist();
+                  this.setState((state) => {
+                    return {
+                      levelProgression: [
+                        ...state.levelProgression.slice(0, index),
+                        { ...state.levelProgression[index], ...{ will: event.target.value as SaveProgression } },
+                        ...state.levelProgression.slice(index + 1, state.levelProgression.length)
+                      ]
+                    }
+                  });
+                }}>
+                  <option value={SaveProgression.None}>{SaveProgression.None}</option>
+                  <option value={SaveProgression.Poor}>{SaveProgression.Poor}</option>
+                  <option value={SaveProgression.Good}>{SaveProgression.Good}</option>
+                </select>
+
+                {index == 0 ? <span></span> : <span style={{ cursor: 'pointer' }} onClick={() => {
+                  this.setState((state) => { return { levelProgression: [...state.levelProgression.slice(0, index), ...state.levelProgression.slice(index + 1, state.levelProgression.length)] } });
+                }}>➖</span>}
+              </React.Fragment>)}
+              <span style={{ cursor: 'pointer' }} onClick={() => {
+                this.setState((state) => {
+                  return {
+                    levelProgression: state.levelProgression.concat({
+                      levels: 1,
+                      hd: 4,
+                      bab: BABProgression.Poor,
+                      fort: SaveProgression.Poor,
+                      will: SaveProgression.Poor,
+                      ref: SaveProgression.Poor
+                    })
+                  }
+                });
+              }}>➕</span>
+            </div>
+            <div>
+              HP From HD Calculation: <select
+                value={this.state.hpFromHDCalculation}
+                onChange={(event) => {
+                  this.setState({
+                    hpFromHDCalculation: event.target.value as HPFromHDCalculation
+                  });
+                }}
+              >
+                <option value={HPFromHDCalculation.Average}>{HPFromHDCalculation.Average}</option>
+                <option value={HPFromHDCalculation.MaxFirst}>{HPFromHDCalculation.MaxFirst}</option>
+                <option value={HPFromHDCalculation.Max}>{HPFromHDCalculation.Max}</option>
+              </select>
+            </div>
+            <div>
+              HP From HD: {this.hpFromHD()}
+            </div>
+            <div>
+              <div>Additional HP: {this.additionalHP()}</div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, auto)',
+                gridGap: '5px 10px',
+                gridRow: `repeat(${this.state.additionalHpSources.length}, 10px)`
+              }}>
+                {this.state.additionalHpSources.map(([bonusValue, bonusType], index) => {
+                  return <React.Fragment key={index}>
+                    <div>
+                      <select
+                        value={bonusValue == null ? '—' : typeof bonusValue === 'string' ? 'fn' : '#'}
+                        onChange={(event) => {
+                          let oldVal: number | string | null = this.state.additionalHpSources[index][0];
+                          let newVal: number | string | null;
+                          switch (event.target.value) {
+                            case '—':
+                              newVal = null;
+                              break;
+                            case '#':
+                              newVal = 0;
+                              if (typeof (oldVal) === 'string') {
+                                try {
+                                  newVal = evaluate(oldVal);
+                                } catch (error) { }
+                              }
+                              break;
+                            case 'fn':
+                              newVal = '0'
+                              if (typeof (oldVal) === 'number') {
+                                newVal = `${oldVal}`
+                              }
+
+                              break;
+                          }
+
+                          this.setState((state) => {
+                            return {
+                              additionalHpSources: [
+                                ...state.additionalHpSources.slice(0, index),
+                                [newVal, state.additionalHpSources[index][1]],
+                                ...state.additionalHpSources.slice(index + 1, state.additionalHpSources.length)
+                              ]
+                            }
+                          });
+
+                        }}
+                      >
+                        <option value="#">#</option>
+                        <option value='fn'>fn</option>
+                        <option value="—">—</option>
+                      </select>
+                      {bonusValue == null ? '' : <input
+                        value={bonusValue}
+                        type={typeof bonusValue === 'number' ? 'number' : 'text'}
+                        className={typeof bonusValue === 'number' ? numberPicker : ''}
+                        onChange={(event) => {
+                          event.persist();
+                          this.setState((state) => {
+                            return {
+                              additionalHpSources: [
+                                ...state.additionalHpSources.slice(0, index),
+                                [typeof state.additionalHpSources[index][0] === 'number' ? parseInt(event.target.value) : event.target.value, state.additionalHpSources[index][1]],
+                                ...state.additionalHpSources.slice(index + 1, state.additionalHpSources.length)
+                              ]
+                            }
+                          });
+                        }}
+                      />}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        list="bonusTypesList"
+                        value={bonusType}
+                        onChange={(event) => {
+                          event.persist();
+                          this.setState((state) => {
+                            return {
+                              additionalHpSources: [
+                                ...state.additionalHpSources.slice(0, index),
+                                [state.additionalHpSources[index][0], (event.target.value as BonusType) ? event.target.value as BonusType : event.target.value],
+                                ...state.additionalHpSources.slice(index + 1, state.additionalHpSources.length)
+                              ]
+                            }
+                          });
+                        }}
+                      />
+                      <datalist id="bonusTypesList">
+                        {bonusTypes.map((bonusType, index) => <option key={index}>{bonusType}</option>)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <span style={{ cursor: 'pointer' }} onClick={() => {
+                        this.setState((state) => { return { additionalHpSources: [...state.additionalHpSources.slice(0, index), ...state.additionalHpSources.slice(index + 1, state.additionalHpSources.length)] } });
+                      }}>➖</span>
+                    </div>
+                  </React.Fragment>
+                })}
+              </div>
+              <span style={{ cursor: 'pointer' }} onClick={() => {
+                this.setState((state) => {
+                  return {
+                    additionalHpSources: state.additionalHpSources.concat([[0, BonusType.untyped]])
+                  }
+                });
+              }}>➕</span>
+            </div>
+
+          </div>}
+        ></Modal>
+
+        <Modal
+          show={this.state.showAbilitiesModal}
+          onDismiss={() => { this.setState({ showAbilitiesModal: false }) }}
+          interior={
+            <div>
+              <div>Use 'level' in fn fields for numbers based on level. e.g. <pre>18+floor(level/4)</pre></div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(8, auto)',
+                gridGap: '5px 10px',
+                gridRow: `repeat(${this.state.levelProgression.length}, 10px)`
+              }}>
+                <div>STR</div><div>DEX</div><div>CON</div><div>INT</div><div>WIS</div><div>CHA</div><div>Type</div><div></div>
+                {this.state.abilityScores.map((element, index) => {
+
+                  return <React.Fragment key={`${index}`}>
+                    {['str', 'dex', 'con', 'int', 'wis', 'cha'].map((abilityScoreName) => {
+
+                      let abilityScoreString: string;
+
+                      if (typeof element[abilityScoreName] === 'number') {
+                        abilityScoreString = `${element[abilityScoreName]}`
+                      } else {
+                        try {
+                          abilityScoreString = evaluate(element[abilityScoreName]);
+                        } catch (error) {
+                          abilityScoreString = '—'
+                        }
+                      }
+
+                      return <div key={`${index}${abilityScoreName}`}>
+                        <select
+                          value={element[abilityScoreName] == null ? '—' : typeof element[abilityScoreName] === 'string' ? 'fn' : '#'}
+                          onChange={(event) => {
+                            let oldVal: number | string | null = this.state.abilityScores[index][`${abilityScoreName}`];
+                            let newVal: number | string | null;
+                            switch (event.target.value) {
+                              case '—':
+                                newVal = null;
+                                break;
+                              case '#':
+                                newVal = 0;
+                                if (typeof (oldVal) === 'string') {
+                                  try {
+                                    newVal = evaluate(oldVal);
+                                  } catch (error) { }
+                                }
+                                break;
+                              case 'fn':
+                                newVal = '0'
+                                if (typeof (oldVal) === 'number') {
+                                  newVal = `${oldVal}`
+                                }
+
+                                break;
+                            }
+
+                            this.setState((state) => {
+                              return {
+                                abilityScores: [
+                                  ...state.abilityScores.slice(0, index),
+                                  Object.assign({}, state.abilityScores[index], { [`${abilityScoreName}`]: newVal }),
+                                  ...state.abilityScores.slice(index + 1, state.abilityScores.length)
+                                ]
+                              }
+                            });
+
+                          }}
+                        >
+                          <option value="#">#</option>
+                          <option value='fn'>fn</option>
+                          <option value="—">—</option>
+                        </select>
+                        {element[abilityScoreName] == null ? '' : <input
+                          value={element[abilityScoreName]}
+                          type={typeof element[abilityScoreName] === 'number' ? 'number' : 'text'}
+                          className={typeof element[abilityScoreName] === 'number' ? numberPicker : ''}
+                          onChange={(event) => {
+                            event.persist();
+                            this.setState((state) => {
+                              return {
+                                abilityScores: [
+                                  ...state.abilityScores.slice(0, index),
+                                  Object.assign({}, state.abilityScores[index], { [`${abilityScoreName}`]: typeof element[abilityScoreName] === 'number' ? parseInt(event.target.value) : event.target.value }),
+                                  ...state.abilityScores.slice(index + 1, state.abilityScores.length)
+                                ]
+                              }
+                            });
+                          }}
+                        />}
+                      </div>
+                    })}
+                    {index <= 2 ? <div>{element.bonusType}</div> : <div>
+                      <input
+                        type="text"
+                        list="bonusTypesList"
+                        value={element.bonusType}
+                        onChange={(event) => {
+                          event.persist();
+                          this.setState((state) => {
+                            return {
+                              abilityScores: [
+                                ...state.abilityScores.slice(0, index),
+                                Object.assign({}, state.abilityScores[index], { bonusType: (event.target.value as BonusType) ? event.target.value as BonusType : event.target.value }),
+                                ...state.abilityScores.slice(index + 1, state.abilityScores.length)
+                              ]
+                            }
+                          });
+                        }}
+                      />
+                      <datalist id="bonusTypesList">
+                        {bonusTypes.map((bonusType, index) => <option key={index}>{bonusType}</option>)}
+                      </datalist>
+                    </div>}
+                    {index <= 2 ? <span></span> : <span style={{ cursor: 'pointer' }} onClick={() => {
+                      this.setState((state) => { return { abilityScores: [...state.abilityScores.slice(0, index), ...state.abilityScores.slice(index + 1, state.abilityScores.length)] } });
+                    }}>➖</span>}
+                  </React.Fragment>
+                })}
+                <span style={{ cursor: 'pointer', gridColumn: '1 / span 8' }}>
+                  <span onClick={() => {
+                    this.setState((state) => {
+                      return {
+                        abilityScores: state.abilityScores.concat({
+                          str: 0,
+                          dex: 0,
+                          con: 0,
+                          int: 0,
+                          wis: 0,
+                          cha: 0,
+                          bonusType: BonusType.untyped
+                        })
+                      }
+                    });
+                  }}>➕</span>
+                </span>
+                {['str', 'dex', 'con', 'int', 'wis', 'cha'].map((abilityScoreName, index) => {
+                  return <div key={index}>{this[`_${abilityScoreName}Score`]()}</div>
+                })
+                }
+
+              </div>
+            </div>
+          }
+        ></Modal>
+
+        <Modal
+          show={this.state.showInitiativeModal}
+          onDismiss={() => { this.setState({ showInitiativeModal: false }) }}
+          interior={
+            <div>
+              <div>Initiative: {this.totalInitiative()}</div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, auto)',
+                gridGap: '5px 10px',
+                gridRow: `repeat(${this.state.initiativeSources.length}, 10px)`
+              }}>
+                {this.state.initiativeSources.map(([bonusValue, bonusType], index) => {
+                  return <React.Fragment key={index}>
+                    <div>
+                      <select
+                        value={bonusValue == null ? '—' : typeof bonusValue === 'string' ? 'fn' : '#'}
+                        onChange={(event) => {
+                          let oldVal: number | string | null = this.state.initiativeSources[index][0];
+                          let newVal: number | string | null;
+                          switch (event.target.value) {
+                            case '—':
+                              newVal = null;
+                              break;
+                            case '#':
+                              newVal = 0;
+                              if (typeof (oldVal) === 'string') {
+                                try {
+                                  newVal = evaluate(oldVal);
+                                } catch (error) { }
+                              }
+                              break;
+                            case 'fn':
+                              newVal = '0'
+                              if (typeof (oldVal) === 'number') {
+                                newVal = `${oldVal}`
+                              }
+
+                              break;
+                          }
+
+                          this.setState((state) => {
+                            return {
+                              initiativeSources: [
+                                ...state.initiativeSources.slice(0, index),
+                                [newVal, state.initiativeSources[index][1]],
+                                ...state.initiativeSources.slice(index + 1, state.initiativeSources.length)
+                              ]
+                            }
+                          });
+
+                        }}
+                      >
+                        <option value="#">#</option>
+                        <option value='fn'>fn</option>
+                        <option value="—">—</option>
+                      </select>
+                      {bonusValue == null ? '' : <input
+                        value={bonusValue}
+                        type={typeof bonusValue === 'number' ? 'number' : 'text'}
+                        className={typeof bonusValue === 'number' ? numberPicker : ''}
+                        onChange={(event) => {
+                          event.persist();
+                          this.setState((state) => {
+                            return {
+                              initiativeSources: [
+                                ...state.initiativeSources.slice(0, index),
+                                [typeof state.initiativeSources[index][0] === 'number' ? parseInt(event.target.value) : event.target.value, state.initiativeSources[index][1]],
+                                ...state.initiativeSources.slice(index + 1, state.initiativeSources.length)
+                              ]
+                            }
+                          });
+                        }}
+                      />}
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        list="bonusTypesList"
+                        value={bonusType}
+                        onChange={(event) => {
+                          event.persist();
+                          this.setState((state) => {
+                            return {
+                              initiativeSources: [
+                                ...state.initiativeSources.slice(0, index),
+                                [state.initiativeSources[index][0], (event.target.value as BonusType) ? event.target.value as BonusType : event.target.value],
+                                ...state.initiativeSources.slice(index + 1, state.initiativeSources.length)
+                              ]
+                            }
+                          });
+                        }}
+                      />
+                      <datalist id="bonusTypesList">
+                        {bonusTypes.map((bonusType, index) => <option key={index}>{bonusType}</option>)}
+                      </datalist>
+                    </div>
+                    <div>
+                      <span style={{ cursor: 'pointer' }} onClick={() => {
+                        this.setState((state) => { return { initiativeSources: [...state.initiativeSources.slice(0, index), ...state.initiativeSources.slice(index + 1, state.initiativeSources.length)] } });
+                      }}>➖</span>
+                    </div>
+                  </React.Fragment>
+                })}
+              </div>
+              <span style={{ cursor: 'pointer' }} onClick={() => {
+                this.setState((state) => {
+                  return {
+                    initiativeSources: state.initiativeSources.concat([[0, BonusType.untyped]])
+                  }
+                });
+              }}>➕</span>
+            </div>
+          }
+        >
+
+        </Modal>
+
+        <Modal
+          show={this.state.showSpeedModal}
+          onDismiss={() => { this.setState({ showSpeedModal: false }) }}
+          interior={
+            <div>
+              {this.state.speeds.map(([speedType, bonuses], speedIndex) => {
+                return <div>
+                  <div>
+                    <div>{speedType}: {addBonuses(bonuses, this.abilityScoresAndModsScope())}</div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, auto)',
+                      gridGap: '5px 10px',
+                      gridRow: `repeat(${bonuses.length}, 10px)`
+                    }}>
+                      {bonuses.map(([bonusValue, bonusType], bonusIndex) => {
+                        return <React.Fragment key={bonusIndex}>
+                          <div>
+                            <select
+                              value={bonusValue == null ? '—' : typeof bonusValue === 'string' ? 'fn' : '#'}
+                              onChange={(event) => {
+                                let oldVal: number | string | null = bonuses[bonusIndex][0];
+                                let newVal: number | string | null;
+                                switch (event.target.value) {
+                                  case '—':
+                                    newVal = null;
+                                    break;
+                                  case '#':
+                                    newVal = 0;
+                                    if (typeof (oldVal) === 'string') {
+                                      try {
+                                        newVal = evaluate(oldVal);
+                                      } catch (error) { }
+                                    }
+                                    break;
+                                  case 'fn':
+                                    newVal = '0'
+                                    if (typeof (oldVal) === 'number') {
+                                      newVal = `${oldVal}`
+                                    }
+
+                                    break;
+                                }
+
+
+
+                                // this.setState((state) => {
+
+                                //   let newSpeed = [
+                                //     ...state.speeds[speedIndex][1].slice(0, bonusIndex),
+                                //     [newVal, state.initiativeSources[bonusIndex][1]],
+                                //     ...state.initiativeSources.slice(bonusIndex + 1, state.initiativeSources.length)
+                                //   ]
+
+                                //   return {
+                                //     speeds: [
+                                //       ...state.speeds.slice(0, speedIndex),
+                                //       newSpeed,
+                                //       ...state.speeds.slice(speedIndex + 1, state.speeds.length)
+                                //     ]
+                                //   }
+                                // });
+
+                              }}
+                            >
+                              <option value="#">#</option>
+                              <option value='fn'>fn</option>
+                              <option value="—">—</option>
+                            </select>
+                            {bonusValue == null ? '' : <input
+                              value={bonusValue}
+                              type={typeof bonusValue === 'number' ? 'number' : 'text'}
+                              className={typeof bonusValue === 'number' ? numberPicker : ''}
+                              onChange={(event) => {
+                                event.persist();
+                                this.setState((state) => {
+                                  return {
+                                    initiativeSources: [
+                                      ...state.initiativeSources.slice(0, bonusIndex),
+                                      [typeof state.initiativeSources[bonusIndex][0] === 'number' ? parseInt(event.target.value) : event.target.value, state.initiativeSources[bonusIndex][1]],
+                                      ...state.initiativeSources.slice(bonusIndex + 1, state.initiativeSources.length)
+                                    ]
+                                  }
+                                });
+                              }}
+                            />}
+                          </div>
+                          <div>
+                            <input
+                              type="text"
+                              list="bonusTypesList"
+                              value={bonusType}
+                              onChange={(event) => {
+                                event.persist();
+                                this.setState((state) => {
+                                  return {
+                                    initiativeSources: [
+                                      ...state.initiativeSources.slice(0, bonusIndex),
+                                      [state.initiativeSources[bonusIndex][0], (event.target.value as BonusType) ? event.target.value as BonusType : event.target.value],
+                                      ...state.initiativeSources.slice(bonusIndex + 1, state.initiativeSources.length)
+                                    ]
+                                  }
+                                });
+                              }}
+                            />
+                            <datalist id="bonusTypesList">
+                              {bonusTypes.map((bonusType, index) => <option key={index}>{bonusType}</option>)}
+                            </datalist>
+                          </div>
+                          <div>
+                            <span style={{ cursor: 'pointer' }} onClick={() => {
+                              this.setState((state) => { return { initiativeSources: [...state.initiativeSources.slice(0, bonusIndex), ...state.initiativeSources.slice(bonusIndex + 1, state.initiativeSources.length)] } });
+                            }}>➖</span>
+                          </div>
+                        </React.Fragment>
+                      })}
+                    </div>
+                    <span style={{ cursor: 'pointer' }} onClick={() => {
+                      this.setState((state) => {
+                        return {
+                          initiativeSources: state.initiativeSources.concat([[0, BonusType.untyped]])
+                        }
+                      });
+                    }}>➕</span>
+                  </div>
+                </div>
+              })}
+            </div>
+          }
+        ></Modal>
+
+      </div>
+    </div>
+  }
+}
+
+ReactDOM.render(
+  <App />,
+  document.getElementById("root")
+);
