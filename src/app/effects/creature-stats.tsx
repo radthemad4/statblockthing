@@ -9,6 +9,11 @@ export enum CreatureStat {
     fort = 'fort',
     ref = 'ref',
     will = 'will',
+    initiative = 'initiative',
+    landSpeed = 'landSpeed',
+    grapple = 'grapple',
+
+    armorClass = 'ac',
 
     str = "strScore",
     dex = "dexScore",
@@ -16,6 +21,9 @@ export enum CreatureStat {
     int = "intScore",
     wis = "wisScore",
     cha = "chaScore",
+
+    baseMeleeAttack = "baseMeleeAttack",
+    baseRangedAttack = "baseRangedAttack",
 }
 
 export const creatureStatDisplayNames = {
@@ -25,6 +33,11 @@ export const creatureStatDisplayNames = {
     [CreatureStat.fort]: "Fort",
     [CreatureStat.ref]: "Ref",
     [CreatureStat.will]: "Will",
+    [CreatureStat.initiative]: "Initiative",
+    [CreatureStat.landSpeed]: "Land Speed",
+    [CreatureStat.grapple]: "Grapple",
+
+    [CreatureStat.armorClass]: "Armor Class",
 
     [CreatureStat.str]: "Strength",
     [CreatureStat.dex]: "Dexterity",
@@ -32,6 +45,9 @@ export const creatureStatDisplayNames = {
     [CreatureStat.int]: "Intelligence",
     [CreatureStat.wis]: "Wisdom",
     [CreatureStat.cha]: "Charisma",
+
+    [CreatureStat.baseMeleeAttack]: "Base Melee Attack",
+    [CreatureStat.baseRangedAttack]: "Base Ranged Attack",
 };
 
 export const creatureStats = [
@@ -42,6 +58,11 @@ export const creatureStats = [
     CreatureStat.fort,
     CreatureStat.ref,
     CreatureStat.will,
+    CreatureStat.initiative,
+    CreatureStat.landSpeed,
+    CreatureStat.grapple,
+
+    CreatureStat.armorClass,
 
     CreatureStat.str,
     CreatureStat.dex,
@@ -50,6 +71,8 @@ export const creatureStats = [
     CreatureStat.wis,
     CreatureStat.cha,
 
+    CreatureStat.baseMeleeAttack,
+    CreatureStat.baseRangedAttack,
 ];
 
 export interface ModifyCreatureStat {

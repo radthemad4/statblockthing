@@ -8,10 +8,13 @@ import { CreatureType, isSetCreatureType, SetCreatureSubtypeEffectType, creature
 import { Effect, EffectModifierDiv, EffectType, effectTypes, HitDiceBasedBonusType, hitDiceBasedBonusTypes, isAddHitDice } from "./effects/effect";
 import { initialState } from './initial-state';
 import { Modal } from './modal';
+import { ArmorClassModal } from './modals/armor-class-modal';
 import { StatModal } from './modals/stat-modal';
 import { TypesModal } from './modals/types-modal';
 import { sizeName } from "./progressions";
 import { numberPicker, transparentButton, statblockLeft } from "./styles";
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faChevronRight, faChevronDown } from '@fortawesome/free-solid-svg-icons';
 
 export interface CreatureModifier {
     name: string,
@@ -22,12 +25,23 @@ export interface CreatureModifier {
 
 export interface AppState {
     modifiers: CreatureModifier[],
-    statModalStat?: CreatureStat,
+
+    touchACBonusTypes: Set<BonusType | string>,
+    flatfootedACBonusTypes: Set<BonusType | string>,
+
+    statModalCreatureStat?: CreatureStat,
+    statModalHDType?: HitDiceBasedBonusType,
     showStatModal: boolean,
+
     showTypesModal: boolean,
+
+    showArmorClassModal: boolean,
 }
 
 let creatureStatsMemo: { [key: string]: number }[][];
+let getLastEntryOfCreatureStatsMemo = () => {
+    return creatureStatsMemo[creatureStatsMemo.length - 1][creatureStatsMemo[creatureStatsMemo.length - 1].length - 1];
+}
 
 class App extends React.Component<{}, AppState> {
     constructor(props: {}) {
@@ -61,7 +75,29 @@ class App extends React.Component<{}, AppState> {
         };
     };
 
-    updateCreatureStatsMemo(modifiers: CreatureModifier[]) {
+    handleChangeTouchACBonusTypes = (newTouchACBonusTypes: Set<BonusType | string>) => {
+        this.setState((state) => {
+            this.updateCreatureStatsMemo(this.state.modifiers, newTouchACBonusTypes);
+            return {
+                touchACBonusTypes: newTouchACBonusTypes,
+            };
+        });
+    }
+
+    handleChangeFlatfootedACBonusTypes = (newFlatfootedACBonusTypes: Set<BonusType | string>) => {
+        this.setState((state) => {
+            this.updateCreatureStatsMemo(this.state.modifiers, this.state.touchACBonusTypes, newFlatfootedACBonusTypes);
+            return {
+                flatfootedACBonusTypes: newFlatfootedACBonusTypes,
+            };
+        });
+    }
+
+    updateCreatureStatsMemo(
+        modifiers: CreatureModifier[] = this.state.modifiers,
+        touchACBonusTypesToInclude: Set<string> = this.state.touchACBonusTypes,
+        flatfootedACBonusTypesToInclude: Set<string> = this.state.flatfootedACBonusTypes
+    ) {
 
         creatureStatsMemo = [];
 
@@ -76,7 +112,7 @@ class App extends React.Component<{}, AppState> {
             hitDiceBasedNumbersMap[hdBasedBonusType] = 0;
         }
 
-        let lastCreatureStatsMemoEntry = {};
+        let lastCreatureStatsMemoEntry: { [key: string]: number } = {};
 
         for (let modifierIndex = 0; modifierIndex < modifiers.length; modifierIndex++) {
             if (modifiers[modifierIndex].active == false) {
@@ -89,6 +125,7 @@ class App extends React.Component<{}, AppState> {
                 const effect = modifiers[modifierIndex].effects[effectIndex];
 
                 if (effect.active == false) {
+                    creatureStatsMemo[modifierIndex][effectIndex] = lastCreatureStatsMemoEntry;
                     continue;
                 }
 
@@ -125,8 +162,18 @@ class App extends React.Component<{}, AppState> {
                     statToBonusMap[effect.stat].push(effect.bonus);
 
                     for (const key in statToBonusMap) {
+
                         let bonusTotal = addBonuses(statToBonusMap[key], lastCreatureStatsMemoEntry);
                         creatureStatsMemo[modifierIndex][effectIndex][key] = bonusTotal;
+
+                        if (key === CreatureStat.armorClass) {
+                            let touchACBonusTotal = addBonuses(statToBonusMap[key], lastCreatureStatsMemoEntry, touchACBonusTypesToInclude);
+                            creatureStatsMemo[modifierIndex][effectIndex]['touchAC'] = touchACBonusTotal;
+
+                            let flatfootedACBonusTotal = addBonuses(statToBonusMap[key], lastCreatureStatsMemoEntry, flatfootedACBonusTypesToInclude);
+                            creatureStatsMemo[modifierIndex][effectIndex]['flatfootedAC'] = flatfootedACBonusTotal;
+                        }
+
                     }
                 } else {
                     for (const key in statToBonusMap) {
@@ -145,31 +192,54 @@ class App extends React.Component<{}, AppState> {
                     creatureStatsMemo[modifierIndex][effectIndex][`${stat.substr(0, 3)}Mod`] = Math.floor(0.5 * (creatureStatsMemo[modifierIndex][effectIndex][stat] - 10));
                 }
 
+                const size = lastCreatureStatsMemoEntry[CreatureStat.size];
+
+                let sizeMod = 0;
+
+                if (size === 0) {
+                    sizeMod = 0;
+                } else {
+                    sizeMod = -Math.sign(size) * 2 ** (Math.abs(size) - 1);
+                }
+
+                creatureStatsMemo[modifierIndex][effectIndex]['sizeMod'] = sizeMod;
+
                 lastCreatureStatsMemoEntry = creatureStatsMemo[modifierIndex][effectIndex];
 
             }
+
+            if (modifiers[modifierIndex].effects.length === 0) {
+                creatureStatsMemo[modifierIndex][0] = lastCreatureStatsMemoEntry;
+            }
         }
 
-        console.log(creatureStatsMemo);
+        // console.log(creatureStatsMemo);
     }
 
     handleBonusTypeChange = (effectIndex: number, modifierIndex: number) => {
         return (newBonusType: string) => {
-            this.setState((state) => ({
-                modifiers: state.modifiers.map((element, i) => (i !== modifierIndex ? element : {
+            this.setState((state) => {
+
+                const modifiers = state.modifiers.map((element, i) => (i !== modifierIndex ? element : {
                     ...element,
                     effects: state.modifiers[i].effects.map((effect, effectIndex1) => effectIndex1 !== effectIndex ? effect : {
                         ...effect, bonus: {
                             ...(effect as ModifyCreatureStat).bonus, type: newBonusType
                         }
                     })
-                })),
-            }));
+                }));
+
+                this.updateCreatureStatsMemo(modifiers);
+
+                return {
+                    modifiers,
+                };
+            });
         };
     }
 
     getCreatureStat(creatureStat: CreatureStat): number {
-        return creatureStatsMemo[creatureStatsMemo.length - 1][creatureStatsMemo[creatureStatsMemo.length - 1].length - 1][creatureStat] ?? NaN;
+        return getLastEntryOfCreatureStatsMemo()[creatureStat] ?? NaN;
     }
 
     getCreatureType(): string {
@@ -178,7 +248,7 @@ class App extends React.Component<{}, AppState> {
         for (const modifier of this.state?.modifiers ?? []) {
             if (modifier.active) {
                 for (const effect of modifier.effects) {
-                    if (isSetCreatureType(effect) && effect.active) {
+                    if (effect.active && isSetCreatureType(effect)) {
                         creatureTypeName = effect.creatureType;
                     }
                 }
@@ -209,7 +279,7 @@ class App extends React.Component<{}, AppState> {
     }
 
     getHitDiceBasedBonus(bonusType: HitDiceBasedBonusType): number {
-        return creatureStatsMemo[creatureStatsMemo.length - 1][creatureStatsMemo[creatureStatsMemo.length - 1].length - 1][bonusType] ?? NaN;
+        return getLastEntryOfCreatureStatsMemo()[bonusType] ?? NaN;
     }
 
     getHitDiceString(): string {
@@ -245,14 +315,25 @@ class App extends React.Component<{}, AppState> {
 
             <StatModal
                 show={this.state.showStatModal}
-                stat={this.state.statModalStat}
+                creatureStat={this.state.statModalCreatureStat}
+                hdBonusType={this.state.statModalHDType}
                 modifiers={this.state.modifiers}
                 handleChangeModifiers={this.handleChangeModifiers}
                 handleBonusAmountChange={this.handleBonusAmountChange}
                 handleBonusTypeChange={this.handleBonusTypeChange}
-                getStat={() => this.getCreatureStat(this.state.statModalStat)}
+                statOutput={() => {
+                    let output = "";
+                    switch (this.state.statModalCreatureStat) {
+                        case CreatureStat.size:
+                            output = `${sizeName(this.getCreatureStat(CreatureStat.size))}`;
+                        default:
+                            output = `${this.getCreatureStat(this.state.statModalCreatureStat)}`;
+                    }
+
+                    return output;
+                }}
                 handleDismissModal={() => {
-                    this.setState({ showStatModal: false });
+                    this.setState({ showStatModal: false, statModalCreatureStat: null, statModalHDType: null });
                 }}
             />
 
@@ -273,10 +354,32 @@ class App extends React.Component<{}, AppState> {
                 }}
             />
 
+            <ArmorClassModal
+                show={this.state.showArmorClassModal}
+                modifiers={this.state.modifiers}
+                touchACBonusTypes={this.state.touchACBonusTypes}
+                flatfootedACBonusTypes={this.state.flatfootedACBonusTypes}
+                handleChangeModifiers={this.handleChangeModifiers}
+                handleChangeFlatfootedACBonusTypes={this.handleChangeFlatfootedACBonusTypes}
+                handleChangeTouchACBonusTypes={this.handleChangeTouchACBonusTypes}
+                handleBonusAmountChange={this.handleBonusAmountChange}
+                handleBonusTypeChange={this.handleBonusTypeChange}
+                statOutput={() => {
+                    const ac = this.getCreatureStat(CreatureStat.armorClass);
+                    const touchAC = getLastEntryOfCreatureStatsMemo()['touchAC'];
+                    const flatfootedAC = getLastEntryOfCreatureStatsMemo()['flatfootedAC'];
+                    return `${ac}, touch ${touchAC}, flat-footed ${flatfootedAC}`;
+                }}
+                handleDismissModal={() => {
+                    this.setState({ showArmorClassModal: false });
+                }}
+            />
+
             <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'auto auto',
+                display: 'flex',
+                flexWrap: 'wrap',
                 alignItems: 'start',
+                justifyContent: 'space-between'
             }}>
                 <div style={{
                     display: 'grid',
@@ -286,7 +389,7 @@ class App extends React.Component<{}, AppState> {
                     <div className={statblockLeft}>Size/Type:</div>
                     <div>
                         <span style={{ cursor: 'pointer' }} onClick={() => {
-                            this.setState({ showStatModal: true, statModalStat: CreatureStat.size });
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.size });
                         }}>
                             {sizeName(this.getCreatureStat(CreatureStat.size))}
                         </span>
@@ -309,7 +412,11 @@ class App extends React.Component<{}, AppState> {
                     <div className={statblockLeft}>Hit Dice:</div>
                     <div>
                         <span style={{ cursor: 'pointer' }} onClick={() => {
-                            this.setState({ showStatModal: true, statModalStat: CreatureStat.hp });
+                            this.setState({
+                                showStatModal: true,
+                                statModalCreatureStat: CreatureStat.hp,
+                                statModalHDType: HitDiceBasedBonusType.hp,
+                            });
                         }}>
                             {(() => {
                                 const hp = this.getCreatureStat(CreatureStat.hp);
@@ -320,7 +427,7 @@ class App extends React.Component<{}, AppState> {
 
                                 const hpFromHD = this.getHitDiceBasedBonus(HitDiceBasedBonusType.hp);
 
-                                const difference = hp - hpFromHD;
+                                const difference = Math.round(hp - hpFromHD);
 
                                 if (difference == 0) {
                                     return `${this.getHitDiceString()} (${this.getCreatureStat(CreatureStat.hp)} hp)`;
@@ -335,47 +442,139 @@ class App extends React.Component<{}, AppState> {
                         </span>
                     </div>
 
-                    <div className={statblockLeft}>Initiative:</div><div>To do</div>
-                    <div className={statblockLeft}>Speed:</div><div>To do</div>
-                    <div className={statblockLeft}>Armor Class:</div><div>To do</div>
+                    <div className={statblockLeft}>Initiative:</div>
+                    <div>
+                        <span style={{ cursor: 'pointer' }} onClick={() => {
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.initiative });
+                        }}>
+                            {(() => {
+                                let initiative = this.getCreatureStat(CreatureStat.initiative);
+                                return isNaN(initiative) ? '—' :
+                                    initiative >= 0 ? `+${initiative}` : initiative;
+                            })()}
+                        </span>
+                    </div>
+                    <div className={statblockLeft}>Speed:</div>
+                    <div>
+                        <span style={{ cursor: 'pointer' }} onClick={() => {
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.landSpeed });
+                        }}>
+                            {(() => {
+                                let speed = this.getCreatureStat(CreatureStat.landSpeed);
+                                return isNaN(speed) ? '—' : `${speed} ft. (${Math.floor(speed / 5)} squares)`;
+                            })()}
+                        </span>, To do
+                    </div>
+                    <div className={statblockLeft}>Armor Class:</div>
+                    <div
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                            this.setState({ showArmorClassModal: true });
+                        }}
+                    >
+                        <span>
+                            {(() => {
+                                const ac = this.getCreatureStat(CreatureStat.armorClass);
+
+
+                                return isNaN(ac) ? '—' : `${ac}, `;
+                            })()}
+                        </span>
+                        <span style={{ cursor: 'pointer' }}>
+                            {(() => {
+                                const touchAC = getLastEntryOfCreatureStatsMemo()['touchAC'];
+
+                                return `touch ${isNaN(touchAC) ? '—' : touchAC}, `;
+                            })()}
+                        </span>
+                        <span style={{ cursor: 'pointer' }}>
+                            {(() => {
+                                const flatfootedAC = getLastEntryOfCreatureStatsMemo()['flatfootedAC'];
+
+                                return isNaN(flatfootedAC) ? '—' : `flat-footed ${flatfootedAC}`;
+                            })()}
+                        </span>
+                    </div>
 
                     <div className={statblockLeft}>Base Attack/Grapple:</div>
                     <div>
                         <span style={{ cursor: 'pointer' }} onClick={() => {
-                            this.setState({ showStatModal: true, statModalStat: CreatureStat.bab });
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.bab, statModalHDType: HitDiceBasedBonusType.bab });
                         }}>
                             {(() => {
                                 let bab = this.getCreatureStat(CreatureStat.bab);
                                 return isNaN(bab) ? '—' :
-                                    bab > 0 ? `+${bab}` : bab;
+                                    bab >= 0 ? `+${bab}` : bab;
                             })()}
-                        </span>/To do
+                        </span>
+                        /
+                        <span style={{ cursor: 'pointer' }} onClick={() => {
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.grapple });
+                        }}>
+                            {(() => {
+                                let grapple = this.getCreatureStat(CreatureStat.grapple);
+                                return isNaN(grapple) ? '—' :
+                                    grapple >= 0 ? `+${grapple}` : grapple;
+                            })()}
+                        </span>
                     </div>
 
-                    <div className={statblockLeft}>Attack:</div><div>To do</div>
+                    <div className={statblockLeft}>Attack:</div>
+                    <div>
+                        <span style={{ cursor: 'pointer' }} onClick={() => {
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.baseMeleeAttack });
+                        }}>
+                            {(() => {
+                                let baseMeleeAttack = this.getCreatureStat(CreatureStat.baseMeleeAttack);
+                                return isNaN(baseMeleeAttack) ? '—' :
+                                    baseMeleeAttack >= 0 ? `+${baseMeleeAttack}` : baseMeleeAttack;
+                            })()}
+                            &nbsp;melee&nbsp;
+                        </span>
+                        or
+                        <span style={{ cursor: 'pointer' }} onClick={() => {
+                            this.setState({ showStatModal: true, statModalCreatureStat: CreatureStat.baseRangedAttack });
+                        }}>
+                            &nbsp;
+                            {(() => {
+                                let baseRangedAttack = this.getCreatureStat(CreatureStat.baseRangedAttack);
+                                return isNaN(baseRangedAttack) ? '—' :
+                                    baseRangedAttack >= 0 ? `+${baseRangedAttack}` : baseRangedAttack;
+                            })()}
+                            &nbsp;ranged
+                        </span>
+                    </div>
                     <div className={statblockLeft}>Full Attack:</div><div>To do</div>
                     <div className={statblockLeft}>Space/Reach:</div><div>To do</div>
                     <div className={statblockLeft}>Special Attacks:</div><div>To do</div>
                     <div className={statblockLeft}>Special Qualities:</div><div>To do</div>
                     <div className={statblockLeft}>Saves:</div>{(() => {
                         return <div>
-                            {[(CreatureStat.fort),
-                            (CreatureStat.ref),
-                            (CreatureStat.will),].map((stat, index) => {
-                                return (<span
-                                    key={index}
-                                    style={{ cursor: 'pointer' }}
-                                    onClick={() => {
-                                        this.setState({ showStatModal: true, statModalStat: stat });
-                                    }}
-                                >
-                                    {creatureStatDisplayNames[stat]} {(() => {
-                                        let creatureStat = this.getCreatureStat(stat);
-                                        return isNaN(creatureStat) ? '—' :
-                                            creatureStat > 0 ? `+${creatureStat}` : creatureStat;
-                                    })()}{index == 2 ? '' : <span>,&nbsp;</span>}
-                                </span>)
-                            })}
+                            {(() => {
+                                const tuples: [CreatureStat, HitDiceBasedBonusType][] = [
+                                    [CreatureStat.fort, HitDiceBasedBonusType.fort],
+                                    [CreatureStat.ref, HitDiceBasedBonusType.ref],
+                                    [CreatureStat.will, HitDiceBasedBonusType.will],
+                                ];
+
+                                return tuples.map(([stat, bonusType], index) => {
+                                    return (
+                                        <span
+                                            key={index}
+                                            style={{ cursor: 'pointer' }}
+                                            onClick={() => {
+                                                this.setState({ showStatModal: true, statModalCreatureStat: stat, statModalHDType: bonusType });
+                                            }}
+                                        >
+                                            {creatureStatDisplayNames[stat]} {(() => {
+                                                let creatureStat = this.getCreatureStat(stat);
+                                                return isNaN(creatureStat) ? '—' :
+                                                    creatureStat > 0 ? `+${creatureStat}` : creatureStat;
+                                            })()}{index == 2 ? '' : <span>,&nbsp;</span>}
+                                        </span>
+                                    );
+                                });
+                            })()}
                         </div>;
                     })()}
 
@@ -391,7 +590,7 @@ class App extends React.Component<{}, AppState> {
                                     key={index}
                                     style={{ cursor: 'pointer' }}
                                     onClick={() => {
-                                        this.setState({ showStatModal: true, statModalStat: stat });
+                                        this.setState({ showStatModal: true, statModalCreatureStat: stat });
                                     }}
                                 >
                                     {creatureStatDisplayNames[stat].substring(0, 3)} {(() => {
@@ -413,7 +612,24 @@ class App extends React.Component<{}, AppState> {
                     <div className={statblockLeft}>Alignment:</div><div>To do</div>
                     <div className={statblockLeft}>Advancement:</div><div>To do</div>
                     <div className={statblockLeft}>Level Adjustment:</div><div>To do</div>
+                    <div>
+                        <button onClick={() => {
+                            const input = prompt('Paste a JSON object exported with this');
+                            const state = JSON.parse(input);
+                            state['touchACBonusTypes'] = new Set(state['touchACBonusTypes']);
+                            state['flatfootedACBonusTypes'] = new Set(state['flatfootedACBonusTypes']);
 
+                            this.updateCreatureStatsMemo(state.modifiers, state.touchACBonusTypes, state.flatfootedACBonusTypes);
+                            this.setState(state);
+                        }}>Import</button>
+                        <button onClick={() => {
+                            const stringified = JSON.stringify(this.state);
+                            const parsed = JSON.parse(stringified);
+                            parsed['touchACBonusTypes'] = Array.from(this.state.touchACBonusTypes);
+                            parsed['flatfootedACBonusTypes'] = Array.from(this.state.flatfootedACBonusTypes);
+                            prompt('Copy to clipboard: Ctrl/Command + C', `${JSON.stringify(parsed)}`);
+                        }}>Export</button>
+                    </div>
                 </div>
                 <div>
                     <DragDropContext
@@ -430,8 +646,10 @@ class App extends React.Component<{}, AppState> {
                                         modifiers.splice(source.index, 1);
                                         modifiers.splice(destination.index, 0, state.modifiers[source.index]);
 
+                                        this.updateCreatureStatsMemo(modifiers);
+
                                         return {
-                                            modifiers: modifiers,
+                                            modifiers,
                                         };
                                     });
                                 } else if (type === 'effect') {
@@ -459,9 +677,10 @@ class App extends React.Component<{}, AppState> {
                                         }
 
 
+                                        this.updateCreatureStatsMemo(modifiers);
 
                                         return {
-                                            modifiers: modifiers,
+                                            modifiers,
                                         };
                                     })
                                 }
@@ -491,13 +710,35 @@ class App extends React.Component<{}, AppState> {
                                                     {...provided.dragHandleProps}
                                                     ref={provided.innerRef}
                                                     style={{
-                                                        paddingBottom: '15px',
+                                                        paddingLeft: '10px',
+                                                        paddingRight: '10px',
+                                                        paddingTop: '5px',
+                                                        paddingBottom: '25px',
+                                                        backgroundColor: '#ececec',
+                                                        marginTop: '5px',
+                                                        marginBottom: '5px',
                                                         opacity: active ? 1 : 0.5,
                                                         ...provided.draggableProps.style
                                                     }}
                                                     key={modifierIndex}
                                                 >
                                                     <div>
+                                                        <FontAwesomeIcon
+                                                            icon={this.state.modifiers[modifierIndex].showEffects ? faChevronDown : faChevronRight}
+                                                            style={{
+                                                                cursor: 'pointer',
+                                                                paddingRight: '10px',
+                                                            }}
+                                                            onClick={() => {
+                                                                this.setState((state) => {
+                                                                    return {
+                                                                        modifiers: state.modifiers.map((element, i) => (
+                                                                            (i !== modifierIndex) ? element : { ...element, showEffects: !element.showEffects }
+                                                                        )),
+                                                                    };
+                                                                });
+                                                            }}
+                                                        />
                                                         <input value={name} onChange={(event: ChangeEvent<HTMLInputElement>) => {
                                                             event.persist();
                                                             this.setState((state) => {
@@ -514,13 +755,6 @@ class App extends React.Component<{}, AppState> {
                                                             });
                                                             event.target.checked;
                                                         }}></input>
-                                                        <button className={transparentButton} style={{ opacity: this.state.modifiers[modifierIndex].showEffects ? 1 : 0.2 }} onClick={() => {
-                                                            this.setState((state) => ({
-                                                                modifiers: state.modifiers.map((element, i) => (
-                                                                    (i !== modifierIndex) ? element : { ...element, showEffects: !element.showEffects }
-                                                                )),
-                                                            }));
-                                                        }}>👁️</button>
                                                         <input type='checkbox' checked={active} onChange={(event: ChangeEvent<HTMLInputElement>) => {
                                                             this.setState((state) => {
                                                                 const modifiers = state.modifiers.map((element, i) => (
@@ -534,13 +768,24 @@ class App extends React.Component<{}, AppState> {
                                                             event.target.checked;
                                                         }}></input>
                                                         <button className={transparentButton} onClick={() => {
-                                                            this.setState((state) => ({
-                                                                modifiers: [
+                                                            const choice = confirm('Are you sure you want to delete that?');;
+                                                            if (choice === false) {
+                                                                return;
+                                                            }
+                                                            this.setState((state) => {
+
+                                                                const modifiers = [
                                                                     ...state.modifiers.slice(0, modifierIndex),
                                                                     ...state.modifiers.slice(modifierIndex + 1, state.modifiers.length)
-                                                                ]
-                                                            }));
-                                                        }}>➖</button>
+                                                                ];
+
+                                                                this.updateCreatureStatsMemo(modifiers);
+
+                                                                return {
+                                                                    modifiers
+                                                                };
+                                                            });
+                                                        }}>🗑️</button>
                                                     </div>
 
                                                     {!this.state.modifiers[modifierIndex].showEffects ? '' :
@@ -567,7 +812,16 @@ class App extends React.Component<{}, AppState> {
                                                                                     {...provided.draggableProps}
                                                                                     {...provided.dragHandleProps}
                                                                                     ref={provided.innerRef}
-                                                                                    style={{ ...provided.draggableProps.style }}
+                                                                                    style={{
+                                                                                        paddingLeft: '10px',
+                                                                                        paddingRight: '10px',
+                                                                                        paddingTop: '5px',
+                                                                                        paddingBottom: '5px',
+                                                                                        backgroundColor: 'lightgray',
+                                                                                        marginTop: '5px',
+                                                                                        marginBottom: '5px',
+                                                                                        ...provided.draggableProps.style
+                                                                                    }}
                                                                                 >
                                                                                     <EffectModifierDiv
                                                                                         effect={effect}
@@ -612,9 +866,15 @@ class App extends React.Component<{}, AppState> {
                                     )}
                                     {provided.placeholder}
                                     <button className={transparentButton} onClick={() => {
-                                        this.setState((state) => ({
-                                            modifiers: [...state.modifiers, { name: '', active: true, showEffects: true, effects: [] }]
-                                        }));
+                                        this.setState((state) => {
+                                            const modifiers = [...state.modifiers, { name: '', active: true, showEffects: true, effects: [] }];
+
+                                            this.updateCreatureStatsMemo(modifiers);
+
+                                            return {
+                                                modifiers
+                                            };
+                                        });
                                     }}>➕</button>
                                 </div>
                             )}

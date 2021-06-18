@@ -70,7 +70,7 @@ export enum SaveProgression {
 }
 
 export enum HPFromHDCalculation {
-  Average = "0.5 * hdSize * hd",
-  AverageMaxFirst = "hdSize + 0.5 * hdSize * (hd - 1)",
+  Average = "0.5 * (hdSize+1) * hd",
+  AverageMaxFirst = "hdSize + 0.5 * (hdSize+1) * (hd - 1)",
   Max = "hdSize * hd"
 }

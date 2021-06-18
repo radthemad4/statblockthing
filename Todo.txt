@@ -1,0 +1,11 @@
+Hm, having read your code, I think you're trying to make each component do too much
+You have a single EffectModifierDiv component that is trying to encapsulate the logic of all possible EffectModifiers, when it would be much cleaner to have EffectModifierDiv simply decide which type of effect was being handled, and then pass control to another, more specialized, component.
+
+Duplicate
+Insert
+
+Pointbuy for Base Ability Scores
+
+Advancements from Size
+
+Undo Support

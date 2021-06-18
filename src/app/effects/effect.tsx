@@ -57,6 +57,195 @@ export const effectTypes = [
     EffectType.addHitDice,
 ];
 
+export enum HitDiceModifierPropField {
+    levels,
+    hitDieSize,
+    hp,
+    bab,
+    fort,
+    ref,
+    will
+}
+
+export interface HitDiceModifierProps {
+    effect: AddHitDice,
+    effectIndex: number,
+    modifierIndex: number,
+    modifiers: CreatureModifier[],
+    handleChangeModifiers: (newModifiers: CreatureModifier[]) => void,
+    fieldsToShow: HitDiceModifierPropField[],
+}
+
+export const HitDiceModifierDiv: React.FC<HitDiceModifierProps> = (props) => {
+
+    const modifierIndex = props.modifierIndex;
+    const effectIndex = props.effectIndex;
+    const effect = props.effect;
+
+    return <div style={{ paddingLeft: '2px' }}>
+        {!props.fieldsToShow.includes(HitDiceModifierPropField.levels) ? '' : <div>
+            Levels: <input
+                className={numberPicker}
+                type='number'
+                value={effect.hitDice.numberOfHitDice}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    event.persist();
+
+                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, numberOfHitDice: parseInt(event.target.value) } };
+
+                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                        ...modifier,
+                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                            effectIndex1 !== effectIndex ? effect : replacementEffect
+                        )
+                    })));
+                }}
+            />
+        </div>}
+
+        {!props.fieldsToShow.includes(HitDiceModifierPropField.hitDieSize) ? '' : <div>
+            Hit Die Size: <input
+                className={numberPicker}
+                type='number'
+                value={effect.hitDice.hitDiceSize}
+                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                    event.persist();
+
+                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, hitDiceSize: parseInt(event.target.value) } };
+
+                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                        ...modifier,
+                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                            effectIndex1 !== effectIndex ? effect : replacementEffect
+                        )
+                    })));
+                }}
+            />
+        </div>}
+
+        {(() => {
+
+            const hpTuples: [string, string][] = [
+                [HPFromHDCalculation.Average, 'Average'],
+                [HPFromHDCalculation.AverageMaxFirst, 'Average, Max First'],
+                [HPFromHDCalculation.Max, 'Max'],
+            ];
+
+            const hpButtonSpan = <span>
+                {hpTuples.map((tuple) => {
+
+                    const [progression, label] = tuple;
+
+                    return <button
+                        key={progression}
+                        onClick={() => {
+                            const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [HitDiceBasedBonusType.hp]: progression } };
+                            props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                                ...modifier,
+                                effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                                    effectIndex1 !== effectIndex ? effect : replacementEffect
+                                )
+                            })));
+                        }}
+                    >{label}</button>;
+                })}
+            </span>
+
+            const babTuples: [string, string][] = [
+                [BABProgression.None, 'None'],
+                [BABProgression.Poor, 'Poor'],
+                [BABProgression.Average, 'Average'],
+                [BABProgression.Good, 'Good'],
+            ];
+
+            const babButtonSpan = <span>
+                {babTuples.map((tuple) => {
+
+                    const [progression, label] = tuple;
+
+                    return <button
+                        key={progression}
+                        onClick={() => {
+                            const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [HitDiceBasedBonusType.bab]: progression } };
+                            props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                                ...modifier,
+                                effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                                    effectIndex1 !== effectIndex ? effect : replacementEffect
+                                )
+                            })));
+                        }}
+                    >{label}</button>;
+                })}
+            </span>
+
+            const saveTuples: [string, string][] = [
+                [SaveProgression.None, 'None'],
+                [SaveProgression.Poor, 'Poor'],
+                [SaveProgression.Good, 'Good'],
+            ];
+
+            const [fortButtonSpan, refButtonSpan, willButtonSpan] = [
+                HitDiceBasedBonusType.fort,
+                HitDiceBasedBonusType.ref,
+                HitDiceBasedBonusType.will,
+            ].map((saveType) => {
+                {
+                    return <span>
+                        {saveTuples.map((tuple) => {
+
+                            const [progression, label] = tuple;
+
+                            return <button
+                                key={progression}
+                                onClick={() => {
+                                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [saveType]: progression } };
+                                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                                        ...modifier,
+                                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                                            effectIndex1 !== effectIndex ? effect : replacementEffect
+                                        )
+                                    })));
+                                }}
+                            >{label}</button>;
+                        })}
+                    </span>
+                }
+            });
+
+            const tuples: [string, string, JSX.Element, HitDiceModifierPropField][] = [
+                [HitDiceBasedBonusType.hp, 'HP', hpButtonSpan, HitDiceModifierPropField.hp],
+                [HitDiceBasedBonusType.bab, 'BAB', babButtonSpan, HitDiceModifierPropField.bab],
+                [HitDiceBasedBonusType.fort, 'Fort', fortButtonSpan, HitDiceModifierPropField.fort],
+                [HitDiceBasedBonusType.ref, 'Ref', refButtonSpan, HitDiceModifierPropField.ref],
+                [HitDiceBasedBonusType.will, 'Will', willButtonSpan, HitDiceModifierPropField.will],
+            ];
+
+            return tuples.map(([hdBasedBonusType, label, buttonSpan, hdModPropField]) => {
+
+                return !props.fieldsToShow.includes(hdModPropField) ? <span key={hdBasedBonusType}></span> : (
+                    <div key={hdBasedBonusType}>
+                        {label}: <input
+                            value={effect.hitDice[hdBasedBonusType]}
+                            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                                event.persist();
+
+                                const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [hdBasedBonusType]: event.target.value } };
+
+                                props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
+                                    ...modifier,
+                                    effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
+                                        effectIndex1 !== effectIndex ? effect : replacementEffect
+                                    )
+                                })));
+                            }} />
+                        {buttonSpan}
+                    </div>
+                )
+            });
+        })()}
+    </div>;
+}
+
 export interface EffectModifierProps {
     effect: Effect,
     effectIndex: number,
@@ -232,228 +421,22 @@ export const EffectModifierDiv: React.FC<EffectModifierProps> = (props) => {
                 }
 
                 {
-                    isAddHitDice(effect) ? <div style={{ paddingLeft: '2px' }}>
-                        <div>
-                            Levels: <input
-                                className={numberPicker}
-                                type='number'
-                                value={effect.hitDice.numberOfHitDice}
-                                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                    event.persist();
-
-                                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, numberOfHitDice: parseInt(event.target.value) } };
-
-                                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                        ...modifier,
-                                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                            effectIndex1 !== effectIndex ? effect : replacementEffect
-                                        )
-                                    })));
-                                }}
-                            />
-                        </div>
-                        <div>
-                            Hit Die Size: <input
-                                className={numberPicker}
-                                type='number'
-                                value={effect.hitDice.hitDiceSize}
-                                onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                    event.persist();
-
-                                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, hitDiceSize: parseInt(event.target.value) } };
-
-                                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                        ...modifier,
-                                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                            effectIndex1 !== effectIndex ? effect : replacementEffect
-                                        )
-                                    })));
-                                }}
-                            />
-                        </div>
-
-
-
-                        {(() => {
-
-                            const hpTuples: [string, string][] = [
-                                [HPFromHDCalculation.Average, 'Average'],
-                                [HPFromHDCalculation.AverageMaxFirst, 'Average, Max First'],
-                                [HPFromHDCalculation.Max, 'Max'],
-                            ];
-
-                            const hpButtonSpan = <span>
-                                {hpTuples.map((tuple) => {
-
-                                    const [progression, label] = tuple;
-
-                                    return <button
-                                        key={progression}
-                                        onClick={() => {
-                                            const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [HitDiceBasedBonusType.hp]: progression } };
-                                            props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                                ...modifier,
-                                                effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                                    effectIndex1 !== effectIndex ? effect : replacementEffect
-                                                )
-                                            })));
-                                        }}
-                                    >{label}</button>;
-                                })}
-                            </span>
-
-                            const babTuples: [string, string][] = [
-                                [BABProgression.None, 'None'],
-                                [BABProgression.Poor, 'Poor'],
-                                [BABProgression.Average, 'Average'],
-                                [BABProgression.Good, 'Good'],
-                            ];
-
-                            const babButtonSpan = <span>
-                                {babTuples.map((tuple) => {
-
-                                    const [progression, label] = tuple;
-
-                                    return <button
-                                        key={progression}
-                                        onClick={() => {
-                                            const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [HitDiceBasedBonusType.bab]: progression } };
-                                            props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                                ...modifier,
-                                                effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                                    effectIndex1 !== effectIndex ? effect : replacementEffect
-                                                )
-                                            })));
-                                        }}
-                                    >{label}</button>;
-                                })}
-                            </span>
-
-                            const saveTuples: [string, string][] = [
-                                [SaveProgression.None, 'None'],
-                                [SaveProgression.Poor, 'Poor'],
-                                [SaveProgression.Good, 'Good'],
-                            ];
-
-                            const [fortButtonSpan, refButtonSpan, willButtonSpan] = [
-                                HitDiceBasedBonusType.fort,
-                                HitDiceBasedBonusType.ref,
-                                HitDiceBasedBonusType.will,
-                            ].map((saveType) => {
-                                {
-                                    return <span>
-                                        {saveTuples.map((tuple) => {
-
-                                            const [progression, label] = tuple;
-
-                                            return <button
-                                                key={progression}
-                                                onClick={() => {
-                                                    const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [saveType]: progression } };
-                                                    props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                                        ...modifier,
-                                                        effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                                            effectIndex1 !== effectIndex ? effect : replacementEffect
-                                                        )
-                                                    })));
-                                                }}
-                                            >{label}</button>;
-                                        })}
-                                    </span>
-                                }
-                            });
-
-                            const tuples: [string, string, JSX.Element?][] = [
-                                [HitDiceBasedBonusType.hp, 'HP', hpButtonSpan],
-                                [HitDiceBasedBonusType.bab, 'BAB', babButtonSpan],
-                                [HitDiceBasedBonusType.fort, 'Fort', fortButtonSpan],
-                                [HitDiceBasedBonusType.ref, 'Ref', refButtonSpan],
-                                [HitDiceBasedBonusType.will, 'Will', willButtonSpan],
-                            ];
-
-                            return tuples.map(([hdBasedBonusType, label, buttonSpan]) => {
-                                return <div key={hdBasedBonusType}>
-                                    {label}: <input
-                                        value={effect.hitDice[hdBasedBonusType]}
-                                        onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-                                            event.persist();
-
-                                            const replacementEffect = { ...effect, hitDice: { ...effect.hitDice, [hdBasedBonusType]: event.target.value } };
-
-                                            props.handleChangeModifiers(props.modifiers.map((modifier, i) => (i !== modifierIndex ? modifier : {
-                                                ...modifier,
-                                                effects: props.modifiers[i].effects.map((effect, effectIndex1) =>
-                                                    effectIndex1 !== effectIndex ? effect : replacementEffect
-                                                )
-                                            })));
-                                        }} />
-                                    {buttonSpan}
-                                </div>
-                            });
-                        })()}
-
-
-
-
-                        {/* <select
-                value={typeof bonus.amount === 'number' && isNaN(bonus.amount) ? '—' : typeof bonus.amount === 'string' ? 'fn' : '#'}
-                onChange={(event) => {
-                    let oldVal: number | string = bonus.amount;
-                    let newVal: number | string;
-                    switch (event.target.value) {
-                        case '—':
-                            newVal = NaN;
-                            break;
-                        case '#':
-                            newVal = 0;
-                            if (typeof (oldVal) === 'string') {
-                                try {
-                                    newVal = evaluate(oldVal);
-                                } catch (error) { }
-                            }
-                            break;
-                        case 'fn':
-                            newVal = '0'
-                            if (typeof (oldVal) === 'number') {
-                                newVal = `${oldVal}`
-                            }
-
-                            break;
-                    }
-
-                    props.handleBonusAmountChange(newVal);
-
-                }}
-            >
-                <option value="#">#</option>
-                <option value='fn'>fn</option>
-                <option value="—">—</option>
-            </select>
-
-            {typeof bonus.amount === 'number' && isNaN(bonus.amount) ? '' : <span>
-                <input
-                    value={bonus.amount}
-                    type={typeof bonus.amount === 'number' ? 'number' : 'text'}
-                    className={typeof bonus.amount === 'number' ? numberPicker : ''}
-                    onChange={(event) => {
-                        event.persist();
-
-                        props.handleBonusAmountChange(typeof bonus.amount === 'number' ? parseInt(event.target.value) : event.target.value);
-                    }}
-                />
-
-                <input
-                    type="text"
-                    list="bonusTypesList"
-                    value={bonus.type}
-                    onChange={(event) => {
-                        event.persist();
-
-                        props.handleBonusTypeChange((event.target.value as BonusType) ? event.target.value as BonusType : event.target.value);
-                    }}
-                />
-            </span>} */}
-                    </div> : ''
+                    isAddHitDice(effect) ? <HitDiceModifierDiv
+                        effect={effect}
+                        effectIndex={effectIndex}
+                        modifierIndex={modifierIndex}
+                        modifiers={props.modifiers}
+                        handleChangeModifiers={props.handleChangeModifiers}
+                        fieldsToShow={[
+                            HitDiceModifierPropField.levels,
+                            HitDiceModifierPropField.hitDieSize,
+                            HitDiceModifierPropField.hp,
+                            HitDiceModifierPropField.bab,
+                            HitDiceModifierPropField.fort,
+                            HitDiceModifierPropField.ref,
+                            HitDiceModifierPropField.will,
+                        ]}
+                    /> : ''
                 }
             </div>
 
@@ -466,11 +449,15 @@ export const EffectModifierDiv: React.FC<EffectModifierProps> = (props) => {
                 }}></input>
 
                 <button className={transparentButton} onClick={() => {
+                    const choice = confirm('Are you sure you want to delete that?');;
+                    if (choice === false) {
+                        return;
+                    }
                     props.handleChangeModifiers(props.modifiers.map((element, i) => (i !== modifierIndex ? element : {
                         ...element,
                         effects: [...props.modifiers[i].effects.slice(0, effectIndex), ...props.modifiers[i].effects.slice(effectIndex + 1, props.modifiers[i].effects.length)]
                     })));
-                }}>➖</button>
+                }}>🗑️</button>
             </div>
 
 

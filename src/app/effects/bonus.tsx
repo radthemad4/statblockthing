@@ -23,6 +23,9 @@ export enum BonusType {
     sacred = 'Sacred',
     shield = 'Shield',
     size = 'Size',
+
+    naturalArmor = 'Natural Armor',
+    stacksWithNaturalArmor = 'Stacks with Natural Armor'
 }
 
 export interface Bonus {
@@ -30,38 +33,33 @@ export interface Bonus {
     type: BonusType | string
 };
 
-export function addBonuses(bonusArray: Bonus[], scope?: { [key: string]: number }): number;
-export function addBonuses(bonusMap: Map<string, number[]>): number;
-export function addBonuses(input: any, scope?: { [key: string]: number }): number {
+export function addBonuses(bonusArray: Bonus[], scope?: { [key: string]: number }, bonusTypesToInclude: Set<BonusType|string> = new Set(bonusTypes)): number {
     let output = 0;
-
+    
     let bonusMap: Map<string, number[]>;
 
-
-    if (input instanceof Map) {
-        bonusMap = input;
-    } else {
-        bonusMap = input.reduce((prev: Map<string, number[]>, element: Bonus) => {
-            let output: number;
-            if (typeof element.amount === 'number') {
-                output = element.amount;
-            } else {
-                try {
-                    output = evaluate(element.amount, scope);
-                } catch (error) {
-                    output = null;
-                }
+    bonusMap = bonusArray.reduce((prev: Map<string, number[]>, element: Bonus) => {
+        let output: number;
+        if (typeof element.amount === 'number') {
+            output = element.amount;
+        } else {
+            try {
+                output = evaluate(element.amount, scope);
+            } catch (error) {
+                output = null;
             }
+        }
 
+        if(bonusTypesToInclude.has(element.type)) {
             if (prev.has(element.type)) {
                 prev.get(element.type).push(output);
             } else {
                 prev.set(element.type, [output]);
             }
+        }
 
-            return prev;
-        }, new Map<string, number[]>());
-    }
+        return prev;
+    }, new Map<string, number[]>());
 
     for (let [type, numbers] of bonusMap) {
         if (stackingBonuses.has(type as BonusType)) {
@@ -121,6 +119,9 @@ export const bonusTypes = [
     BonusType.sacred,
     BonusType.shield,
     BonusType.size,
+
+    BonusType.naturalArmor,
+    BonusType.stacksWithNaturalArmor,
 ];
 
 export const stackingBonuses = new Set<BonusType>([
@@ -128,6 +129,7 @@ export const stackingBonuses = new Set<BonusType>([
     BonusType.circumstance,
     BonusType.dodge,
     BonusType.racial,
+    BonusType.stacksWithNaturalArmor,
 ]);
 
 interface EffectBonusSpanProps {
